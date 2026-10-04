@@ -1,0 +1,24 @@
+[workspace]
+resolver="3"
+members = ["apps/dev", "apps/pong", "apps/voxel", "crates/asset","crates/gfx", "crates/math", "crates/render", "crates/runtime"]
+
+[workspace.dependencies]
+winit = "0.30.13"
+pollster = "1.0.1"
+bytemuck = { version = "1", features = ["derive"] }
+glam = { version = "0.33", features = ["bytemuck"] }
+wgpu = "30.0.1"
+image = "0.25"
+wgsl_bindgen = "0.23.3"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+fontdue = "0.9"
+gltf = "1"
+
+gfx = { path = "crates/gfx" }
+runtime = { path = "crates/runtime" }
+render = { path = "crates/render" }
+math = { path = "crates/math" }
+asset = { path = "crates/asset" }
