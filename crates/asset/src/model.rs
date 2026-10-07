@@ -2,26 +2,8 @@ use gfx::Transform;
 use gfx::glam::{Mat4, Vec4};
 
 use crate::animation::Animation;
-
-/// How a texture is sampled between texels.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum TextureFilter {
-    /// Smooth: photos, painted textures.
-    #[default]
-    Linear,
-    /// Hard pixels: pixel art, low-resolution textures.
-    Nearest,
-}
-
-/// What happens to UVs outside 0..1.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum TextureWrap {
-    /// Tile the texture (glTF's default).
-    #[default]
-    Repeat,
-    /// Stretch the edge pixels.
-    Clamp,
-}
+use gfx::TextureFilter;
+use gfx::TextureWrap;
 
 /// A model loaded from a file, independent of any renderer.
 #[derive(Clone)]

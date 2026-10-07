@@ -8,7 +8,7 @@ mod text;
 #[allow(dead_code, clippy::all)]
 mod shader_bindings;
 
-pub use asset::{AlphaMode, TextureFilter, TextureWrap};
+pub use asset::AlphaMode;
 pub use blit::Blit;
 pub use lighting::{DirectionalLight, Lighting, PointLight, ShadowSettings};
 pub use material::{Material, MaterialId};

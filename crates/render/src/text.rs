@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use gfx::glam::{Vec2, Vec4};
-use gfx::{GpuContext, Texture};
+use gfx::{GpuContext, Texture, TextureFilter};
 
 use crate::{Sprite, SpriteRenderer, SpriteTextureId};
 
@@ -92,7 +92,7 @@ impl Font {
 
         let empty = vec![0u8; (ATLAS_SIZE * ATLAS_SIZE * 4) as usize];
         let texture = Texture::from_rgba8(gpu, ATLAS_SIZE, ATLAS_SIZE, &empty, Default::default());
-        let atlas = sprites.add_texture(gpu, &texture, &gpu.samplers.nearest);
+        let atlas = sprites.add_texture(gpu, &texture, TextureFilter::Nearest);
 
         Ok(Self {
             font,

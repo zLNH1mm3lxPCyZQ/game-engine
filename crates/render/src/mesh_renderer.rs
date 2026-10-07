@@ -1,4 +1,4 @@
-use asset::{AlphaMode, TextureFilter, TextureWrap};
+use asset::AlphaMode;
 use gfx::glam::{Mat4, UVec4, Vec3, Vec4};
 use gfx::{
     GpuContext, Mesh, PipelineBuilder, SkinnedVertex, StorageBuffer, Texture, Transform,
@@ -9,6 +9,7 @@ use crate::lighting::{Lighting, PointLight, ShadowSettings};
 use crate::material::{Material, MaterialId};
 use crate::shader_bindings::mesh as shader;
 use crate::shader_bindings::shadow as shadow_shader;
+use gfx::{TextureFilter, TextureWrap};
 
 /// Must match `MAX_POINT_LIGHTS` in mesh.wgsl.
 pub const MAX_POINT_LIGHTS: usize = 16;
@@ -399,10 +400,9 @@ impl MeshRenderer {
             shader::WgpuBindGroup2Entries::new(shader::WgpuBindGroup2EntriesParams {
                 material: params.binding(),
                 base_color_texture: &texture.view,
-                base_color_sampler: gpu.samplers.get(
-                    material.filter == TextureFilter::Nearest,
-                    material.wrap == TextureWrap::Repeat,
-                ),
+                base_color_sampler: gpu
+                    .samplers
+                    .get(TextureFilter::Nearest, TextureWrap::Repeat),
             }),
         );
         let key = PipelineKey {
@@ -638,14 +638,15 @@ impl MeshRenderer {
         if self.prepared.is_empty() {
             return; // the map is still cleared: nothing casts shadows
         }
+        let pass = pass.raw();
 
-        self.shadow_view_bind_group.set(&mut pass);
-        self.shadow_objects_bind_group.set(&mut pass);
+        self.shadow_view_bind_group.set(pass);
+        self.shadow_objects_bind_group.set(pass);
 
         let mut current_pipeline = None;
         for (i, draw) in self.prepared.iter().enumerate() {
             if draw.blended() {
-                continue; // transparent objects don't cast shadows
+                continue;
             }
             let pipeline = draw.skinned() as usize;
             if current_pipeline != Some(pipeline) {
@@ -653,15 +654,16 @@ impl MeshRenderer {
                 current_pipeline = Some(pipeline);
             }
             let i = i as u32;
-            self.meshes[draw.mesh.0 as usize].draw_instanced(&mut pass, i..i + 1);
+            self.meshes[draw.mesh.0 as usize].draw_instanced(pass, i..i + 1);
         }
     }
 
     /// Record the prepared draws. Can be called in any number of passes.
-    pub fn render(&self, pass: &mut wgpu::RenderPass) {
+    pub fn render(&self, pass: &mut gfx::Pass) {
         if self.prepared.is_empty() {
             return;
         }
+        let pass = pass.raw();
 
         // Bind groups stay bound across pipeline changes, since all variants share one layout.
         self.view_bind_group.set(pass);

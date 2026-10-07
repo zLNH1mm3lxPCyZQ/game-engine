@@ -40,7 +40,9 @@ impl Blit {
         }
     }
 
-    pub fn draw(&self, pass: &mut wgpu::RenderPass) {
+    /// Record the blit draw into the given pass.
+    pub fn draw(&self, pass: &mut gfx::Pass) {
+        let pass = pass.raw();
         pass.set_pipeline(&self.pipeline);
         self.bind_group.set(pass);
         pass.draw(0..3, 0..1);

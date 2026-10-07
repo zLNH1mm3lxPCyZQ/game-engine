@@ -5,14 +5,7 @@ edition = "2024"
 
 [dependencies]
 gfx.workspace = true
-wgpu.workspace = true
-winit.workspace = true
-pollster.workspace = true
-image.workspace = true
-bytemuck.workspace = true
-glam.workspace = true
-runtime.workspace = true
 render.workspace = true
+runtime.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
-math.workspace = true

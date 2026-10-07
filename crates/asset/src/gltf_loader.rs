@@ -5,9 +5,8 @@ use gfx::glam::{Mat4, Quat, Vec3, Vec4};
 use gfx::{GpuContext, Mesh, SkinnedVertex, Texture, TextureOptions, Transform, Vertex};
 
 use crate::animation::{Animation, Channel, Interpolation, Keyframes};
-use crate::model::{
-    AlphaMode, Model, ModelMaterial, ModelNode, ModelPart, Skin, TextureFilter, TextureWrap,
-};
+use crate::model::{AlphaMode, Model, ModelMaterial, ModelNode, ModelPart, Skin};
+use gfx::{TextureFilter, TextureWrap};
 
 pub(crate) fn load(gpu: &GpuContext, path: &Path) -> Result<Model, gltf::Error> {
     let (document, buffers, images) = gltf::import(path)?;

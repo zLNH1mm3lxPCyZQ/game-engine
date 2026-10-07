@@ -1,7 +1,10 @@
 use std::ops::Range;
 
 use gfx::glam::{Mat4, Vec2, Vec4};
-use gfx::{GpuContext, PipelineBuilder, StorageBuffer, Texture, UniformBuffer, View};
+use gfx::{
+    GpuContext, PipelineBuilder, StorageBuffer, Texture, TextureFilter, TextureWrap, UniformBuffer,
+    View,
+};
 
 use crate::shader_bindings::sprite as shader;
 
@@ -112,7 +115,7 @@ impl SpriteRenderer {
         };
 
         let white = Texture::from_rgba8(gpu, 1, 1, &[255, 255, 255, 255], Default::default());
-        renderer.white = renderer.add_texture(gpu, &white, &gpu.samplers.nearest);
+        renderer.white = renderer.add_texture(gpu, &white, TextureFilter::Nearest);
         renderer
     }
 
@@ -125,8 +128,9 @@ impl SpriteRenderer {
         &mut self,
         gpu: &GpuContext,
         texture: &Texture,
-        sampler: &wgpu::Sampler,
+        filter: TextureFilter,
     ) -> SpriteTextureId {
+        let sampler = gpu.samplers.get(filter, TextureWrap::Clamp);
         let bind_group = shader::WgpuBindGroup2::from_bindings(
             &gpu.device,
             shader::WgpuBindGroup2Entries::new(shader::WgpuBindGroup2EntriesParams {
@@ -209,10 +213,11 @@ impl SpriteRenderer {
     }
 
     /// Record the prepared sprites. Can be called in any number of passes.
-    pub fn render(&self, pass: &mut wgpu::RenderPass) {
+    pub fn render(&self, pass: &mut gfx::Pass) {
         if self.batches.is_empty() {
             return;
         }
+        let pass = pass.raw();
 
         pass.set_pipeline(&self.pipeline);
         self.camera_bind_group.set(pass);

@@ -5,9 +5,7 @@ mod gltf_loader;
 mod model;
 
 pub use animation::{Animation, Animator, Channel, Interpolation, Keyframes};
-pub use model::{
-    AlphaMode, Model, ModelMaterial, ModelNode, ModelPart, Pose, Skin, TextureFilter, TextureWrap,
-};
+pub use model::{AlphaMode, Model, ModelMaterial, ModelNode, ModelPart, Pose, Skin};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 

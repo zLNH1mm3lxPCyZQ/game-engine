@@ -2,7 +2,7 @@ use asset::AlphaMode;
 use gfx::glam::Vec4;
 
 use crate::TextureId;
-use asset::{TextureFilter, TextureWrap};
+use gfx::{TextureFilter, TextureWrap};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MaterialId(pub(crate) u32);

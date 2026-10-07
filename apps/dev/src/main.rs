@@ -1,5 +1,6 @@
 use gfx::glam::Vec2;
 use gfx::glam::{Quat, Vec3, Vec4};
+use gfx::{Color, Pass};
 use render::{
     Blit, Material, MaterialId, MeshId, MeshRenderer, Sprite, SpriteRenderer, SpriteTextureId,
 };
@@ -65,7 +66,7 @@ struct Dev {
 }
 
 impl Dev {
-    fn draw_scene(&self, pass: &mut wgpu::RenderPass) {
+    fn draw_scene(&self, pass: &mut Pass<'_>) {
         self.image_pass.draw(pass);
         self.meshes.render(pass);
     }
@@ -191,7 +192,7 @@ impl Game for Dev {
                 roughness: 0.8,
                 alpha_mode: render::AlphaMode::Mask { cutoff: 0.5 },
                 double_sided: true,
-                filter: render::TextureFilter::Nearest,
+                filter: gfx::TextureFilter::Nearest,
                 ..Default::default()
             },
         );
@@ -227,7 +228,7 @@ impl Game for Dev {
             },
         ];
         let mut sprites = SpriteRenderer::new(gpu);
-        let photo_sprite = sprites.add_texture(gpu, &photo, &gpu.samplers.linear);
+        let photo_sprite = sprites.add_texture(gpu, &photo, gfx::TextureFilter::Linear);
 
         // Controls
         let actions = ActionMap::new()
@@ -554,24 +555,24 @@ impl Game for Dev {
         // 3. Compose passes.
         // Scene, in HDR.
         {
-            let mut pass = frame.clear_pass_to(self.tonemapper.target(), wgpu::Color::BLACK);
+            let mut pass = frame.clear_pass_to(self.tonemapper.target(), Color::BLACK);
             self.draw_scene(&mut pass);
         }
 
         if self.pixelated {
             // Tone map into the low-res target, then upscale it to the screen.
             {
-                let mut pass = frame.clear_pass_to(&self.low_res, wgpu::Color::BLACK);
+                let mut pass = frame.clear_pass_to(&self.low_res, Color::BLACK);
                 self.tonemapper.draw(&mut pass);
             }
-            let mut pass = frame.clear_pass(wgpu::Color::BLACK);
+            let mut pass = frame.clear_pass(Color::BLACK);
             world_viewport.apply(&mut pass);
             self.upscale_pass.draw(&mut pass);
             gfx::Viewport::full(w, h).apply(&mut pass);
             self.sprites.render(&mut pass);
         } else {
             // Tone map straight to the screen.
-            let mut pass = frame.clear_pass(wgpu::Color::BLACK);
+            let mut pass = frame.clear_pass(Color::BLACK);
             self.tonemapper.draw(&mut pass);
             self.sprites.render(&mut pass);
         }

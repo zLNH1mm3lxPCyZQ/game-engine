@@ -699,17 +699,10 @@ name = "dev"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bytemuck",
  "gfx",
- "glam",
- "image",
- "math",
- "pollster",
  "render",
  "runtime",
  "tracing",
- "wgpu",
- "winit",
 ]
 
 [[package]]
@@ -1029,7 +1022,6 @@ dependencies = [
  "bytemuck",
  "glam",
  "math",
- "pollster",
  "thiserror 2.0.21",
  "tracing",
  "wgpu",
@@ -2587,7 +2579,6 @@ dependencies = [
  "fontdue",
  "gfx",
  "glam",
- "gltf",
  "thiserror 2.0.21",
  "tracing",
  "wgpu",

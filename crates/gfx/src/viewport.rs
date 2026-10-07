@@ -63,8 +63,9 @@ impl Viewport {
     }
 
     /// Make all following draws in this pass go into this rectangle.
-    pub fn apply(&self, pass: &mut wgpu::RenderPass) {
-        pass.set_viewport(self.x, self.y, self.width, self.height, 0.0, 1.0);
+    pub fn apply(&self, pass: &mut crate::Pass) {
+        pass.raw()
+            .set_viewport(self.x, self.y, self.width, self.height, 0.0, 1.0);
     }
 
     /// Convert a window position (like the mouse: y down from the top-left)

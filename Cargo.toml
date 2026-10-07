@@ -1,6 +1,7 @@
 [workspace]
 resolver="3"
 members = ["apps/dev", "apps/pong", "apps/voxel", "crates/asset","crates/gfx", "crates/math", "crates/render", "crates/runtime"]
+default-members = ["apps/dev"]
 
 [workspace.dependencies]
 winit = "0.30.13"

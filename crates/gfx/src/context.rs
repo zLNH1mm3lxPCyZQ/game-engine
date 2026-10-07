@@ -1,4 +1,4 @@
-use crate::{RenderTarget, Texture};
+use crate::{Color, Pass, RenderTarget, Texture, TextureFilter, TextureWrap};
 
 pub struct Samplers {
     pub linear: wgpu::Sampler,
@@ -29,13 +29,12 @@ impl Samplers {
         }
     }
 
-    /// The sampler for a filter and wrap combination.
-    pub fn get(&self, nearest: bool, repeat: bool) -> &wgpu::Sampler {
-        match (nearest, repeat) {
-            (false, false) => &self.linear,
-            (true, false) => &self.nearest,
-            (false, true) => &self.linear_repeat,
-            (true, true) => &self.nearest_repeat,
+    pub fn get(&self, filter: TextureFilter, wrap: TextureWrap) -> &wgpu::Sampler {
+        match (filter, wrap) {
+            (TextureFilter::Linear, TextureWrap::Clamp) => &self.linear,
+            (TextureFilter::Nearest, TextureWrap::Clamp) => &self.nearest,
+            (TextureFilter::Linear, TextureWrap::Repeat) => &self.linear_repeat,
+            (TextureFilter::Nearest, TextureWrap::Repeat) => &self.nearest_repeat,
         }
     }
 }
@@ -165,10 +164,46 @@ impl GpuContext {
 }
 
 impl Frame {
+    pub fn clear_pass(&mut self, color: Color) -> Pass<'_> {
+        begin_pass(
+            &mut self.encoder,
+            &self.view,
+            &self.depth_view,
+            wgpu::LoadOp::Clear(color.into()),
+        )
+    }
+
+    pub fn load_pass(&mut self) -> Pass<'_> {
+        begin_pass(
+            &mut self.encoder,
+            &self.view,
+            &self.depth_view,
+            wgpu::LoadOp::Load,
+        )
+    }
+
+    pub fn clear_pass_to(&mut self, target: &RenderTarget, color: Color) -> Pass<'_> {
+        begin_pass(
+            &mut self.encoder,
+            &target.color.view,
+            &target.depth.view,
+            wgpu::LoadOp::Clear(color.into()),
+        )
+    }
+
+    pub fn load_pass_to(&mut self, target: &RenderTarget) -> Pass<'_> {
+        begin_pass(
+            &mut self.encoder,
+            &target.color.view,
+            &target.depth.view,
+            wgpu::LoadOp::Load,
+        )
+    }
+
     /// A pass with only a depth attachment (no color), cleared to the far plane.
     /// For shadow maps and depth pre-passes.
-    pub fn depth_pass(&mut self, depth: &Texture) -> wgpu::RenderPass<'_> {
-        self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+    pub fn depth_pass(&mut self, depth: &Texture) -> Pass<'_> {
+        Pass::new(self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &depth.view,
@@ -179,47 +214,7 @@ impl Frame {
                 stencil_ops: None,
             }),
             ..Default::default()
-        })
-    }
-
-    pub fn clear_pass(&mut self, color: wgpu::Color) -> wgpu::RenderPass<'_> {
-        begin_pass(
-            &mut self.encoder,
-            &self.view,
-            &self.depth_view,
-            wgpu::LoadOp::Clear(color),
-        )
-    }
-
-    pub fn load_pass(&mut self) -> wgpu::RenderPass<'_> {
-        begin_pass(
-            &mut self.encoder,
-            &self.view,
-            &self.depth_view,
-            wgpu::LoadOp::Load,
-        )
-    }
-
-    pub fn clear_pass_to(
-        &mut self,
-        target: &RenderTarget,
-        color: wgpu::Color,
-    ) -> wgpu::RenderPass<'_> {
-        begin_pass(
-            &mut self.encoder,
-            &target.color.view,
-            &target.depth.view,
-            wgpu::LoadOp::Clear(color),
-        )
-    }
-
-    pub fn load_pass_to(&mut self, target: &RenderTarget) -> wgpu::RenderPass<'_> {
-        begin_pass(
-            &mut self.encoder,
-            &target.color.view,
-            &target.depth.view,
-            wgpu::LoadOp::Load,
-        )
+        }))
     }
 }
 
@@ -228,14 +223,12 @@ fn begin_pass<'e>(
     color: &wgpu::TextureView,
     depth: &wgpu::TextureView,
     load: wgpu::LoadOp<wgpu::Color>,
-) -> wgpu::RenderPass<'e> {
-    // Clearing color also clears depth; loading color keeps depth.
+) -> Pass<'e> {
     let depth_load = match load {
         wgpu::LoadOp::Clear(_) => wgpu::LoadOp::Clear(1.0),
         _ => wgpu::LoadOp::Load,
     };
-
-    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+    Pass::new(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
             view: color,
             depth_slice: None,
@@ -254,5 +247,5 @@ fn begin_pass<'e>(
             stencil_ops: None,
         }),
         ..Default::default()
-    })
+    }))
 }
