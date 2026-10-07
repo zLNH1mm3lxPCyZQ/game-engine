@@ -2213,7 +2213,6 @@ dependencies = [
  "math",
  "render",
  "runtime",
- "wgpu",
 ]
 
 [[package]]

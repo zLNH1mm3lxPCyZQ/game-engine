@@ -1,4 +1,4 @@
-use gfx::glam::{Vec2, Vec4};
+use gfx::{Color, glam::{Vec2, Vec4}};
 use math::{Rect, Rng};
 use render::{Sprite, SpriteRenderer};
 use runtime::{ActionMap, Axis1DBinding, Binding, Context, Game, KeyCode};
@@ -70,6 +70,7 @@ impl Game for Pong {
     fn config() -> runtime::Config {
         runtime::Config {
             title: "Pong".into(),
+        assets_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/assets").into(),
             ..Default::default()
         }
     }
@@ -285,7 +286,7 @@ impl Game for Pong {
             .prepare(gpu, &gfx::View::new(&self.camera, vw, vh));
         self.hud.prepare(gpu, &gfx::View::pixels(vw, vh));
 
-        let mut pass = frame.clear_pass(wgpu::Color::BLACK);
+        let mut pass = frame.clear_pass(Color::BLACK);
         viewport.apply(&mut pass);
         self.sprites.render(&mut pass);
         self.hud.render(&mut pass);

@@ -1,4 +1,4 @@
-use gfx::Vertex;
+use gfx::{Color, Vertex};
 use gfx::glam::{IVec3, Vec2, Vec3, Vec4};
 use render::{Material, MaterialId, MeshId, MeshRenderer, Sprite, SpriteRenderer};
 use runtime::{
@@ -426,12 +426,7 @@ impl Game for Voxel {
         );
         self.hud.prepare(gpu, &gfx::View::pixels(w, h));
 
-        let sky = wgpu::Color {
-            r: 0.45,
-            g: 0.65,
-            b: 0.95,
-            a: 1.0,
-        };
+        let sky = Color::rgba(0.45, 0.65, 0.95, 1.0);
         let mut pass = frame.clear_pass(sky);
         self.meshes.render(&mut pass);
         self.hud.render(&mut pass);
