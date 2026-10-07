@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ecs.workspace = true
 gfx.workspace = true
+math.workspace = true
 render.workspace = true
 runtime.workspace = true
 anyhow.workspace = true
-math.workspace = true

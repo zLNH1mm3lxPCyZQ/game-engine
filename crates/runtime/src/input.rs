@@ -6,12 +6,18 @@ use gfx::glam::Vec2;
 pub use winit::event::MouseButton;
 pub use winit::keyboard::KeyCode;
 
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
+use winit::keyboard::PhysicalKey;
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Query {
     Held,
     Pressed,
     Released,
 }
+
+/// Rough conversion from trackpad pixels to scroll "lines".
+const PIXELS_PER_LINE: f32 = 20.0;
 
 /// Held / pressed / released tracking for any kind of button.
 pub struct ButtonState<T> {
@@ -108,5 +114,41 @@ impl Input {
         self.mouse_buttons.end_tick();
         self.mouse_delta = Vec2::ZERO;
         self.scroll = Vec2::ZERO;
+    }
+
+    /// Apply a window event (keys, mouse buttons, cursor, wheel, focus).
+    pub(crate) fn handle_window_event(&mut self, event: &WindowEvent) {
+        match event {
+            WindowEvent::KeyboardInput { event, .. } => {
+                if let PhysicalKey::Code(key) = event.physical_key {
+                    match event.state {
+                        ElementState::Pressed => self.keys.press(key),
+                        ElementState::Released => self.keys.release(key),
+                    }
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => match state {
+                ElementState::Pressed => self.mouse_buttons.press(*button),
+                ElementState::Released => self.mouse_buttons.release(*button),
+            },
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_position = Vec2::new(position.x as f32, position.y as f32);
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.scroll += match delta {
+                    MouseScrollDelta::LineDelta(x, y) => Vec2::new(*x, *y),
+                    MouseScrollDelta::PixelDelta(p) => {
+                        Vec2::new(p.x as f32, p.y as f32) / PIXELS_PER_LINE
+                    }
+                };
+            }
+            WindowEvent::Focused(false) => self.release_all(),
+            _ => {}
+        }
+    }
+
+    /// Apply raw mouse movement (for locked-cursor camera control).
+    pub(crate) fn handle_mouse_motion(&mut self, dx: f64, dy: f64) {
+        self.mouse_delta += Vec2::new(dx as f32, dy as f32);
     }
 }

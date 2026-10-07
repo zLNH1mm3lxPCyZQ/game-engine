@@ -2224,6 +2224,7 @@ name = "pong"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ecs",
  "gfx",
  "math",
  "render",
@@ -2617,6 +2618,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "asset",
+ "ecs",
  "gfx",
  "pollster",
  "tracing",

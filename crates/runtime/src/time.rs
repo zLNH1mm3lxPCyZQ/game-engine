@@ -6,6 +6,7 @@ pub struct Time {
     pub(crate) frame_count: u64,
     pub(crate) ticks: u64,
     pub(crate) fps: f32,
+    pub(crate) fixed_delta: f32,
     fps_frames: u32,
     fps_time: f32,
 }
@@ -52,4 +53,17 @@ impl Time {
             self.fps_time = 0.0;
         }
     }
+
+    /// The duration of one `FixedUpdate` tick, in seconds.
+    pub(crate) fn with_fixed_delta(fixed_delta: f32) -> Self {
+        Self {
+            fixed_delta,
+            ..Default::default()
+        }
+    }
+
+    /// The duration of one `FixedUpdate` tick, in seconds.
+pub fn fixed_delta(&self) -> f32 {
+    self.fixed_delta
+}
 }

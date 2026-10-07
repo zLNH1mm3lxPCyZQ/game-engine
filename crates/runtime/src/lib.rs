@@ -11,7 +11,12 @@ pub use runner::run;
 pub use time::Time;
 pub use window::Window;
 
+mod app_runner;
+pub use app_runner::run_app;
+pub use ecs;
+
 /// How the game's window and display should be set up.
+#[derive(Clone)]
 pub struct Config {
     pub title: String,
     pub width: u32,
@@ -61,4 +66,20 @@ pub trait Game: Sized + 'static {
     fn init(ctx: &mut Context) -> anyhow::Result<Self>;
     fn update(&mut self, ctx: &mut Context, dt: f32);
     fn render(&mut self, ctx: &mut Context, frame: &mut gfx::Frame);
+}
+
+/// Insert-free way for systems to end the game: `world.resource_mut::<Exit>().request()`.
+#[derive(Default)]
+pub struct Exit {
+    requested: bool,
+}
+
+impl Exit {
+    pub fn request(&mut self) {
+        self.requested = true;
+    }
+
+    pub fn is_requested(&self) -> bool {
+        self.requested
+    }
 }

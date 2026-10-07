@@ -1,10 +1,11 @@
-use gfx::{
-    Color,
-    glam::{Vec2, Vec4},
-};
+//! Pong, written as entities, components, resources, systems, and plugins.
+
+use ecs::{App, Stage, With, World};
+use gfx::glam::{Vec2, Vec4};
 use math::{Rect, Rng};
-use render::{Sprite, SpriteRenderer};
-use runtime::{ActionMap, Axis1DBinding, Binding, Context, Game, KeyCode};
+use render::{Font, Sprite, SpriteRenderer, TextStyle};
+use runtime::asset::Assets;
+use runtime::{ActionMap, Axis1DBinding, Binding, Config, Exit, Input, KeyCode, Time};
 
 const FIELD: Vec2 = Vec2::new(16.0, 9.0);
 const PADDLE_SIZE: Vec2 = Vec2::new(0.3, 1.8);
@@ -14,10 +15,47 @@ const BALL_SIZE: f32 = 0.3;
 const BALL_START_SPEED: f32 = 7.0;
 const SERVE_DELAY: f32 = 1.0;
 const WIN_SCORE: u32 = 5;
+const WIN_MESSAGE_TIME: f32 = 2.0;
 
 const FOREGROUND: Vec4 = Vec4::new(0.92, 0.92, 0.88, 1.0);
 const DIM: Vec4 = Vec4::new(0.92, 0.92, 0.88, 0.25);
 const FIELD_COLOR: Vec4 = Vec4::new(0.08, 0.09, 0.11, 1.0);
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
+
+struct Position(Vec2);
+struct Size(Vec2);
+struct Velocity(Vec2);
+/// 0 = left, 1 = right.
+struct Paddle {
+    side: usize,
+}
+/// Tag: marks the ball.
+struct Ball;
+
+// ---------------------------------------------------------------------------
+// Resources
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+struct Scores([u32; 2]);
+
+/// Counts down before the ball is launched toward `direction` (-1 left, +1 right).
+struct Serve {
+    timer: f32,
+    direction: f32,
+}
+
+/// Which side just won, shown for a moment.
+#[derive(Default)]
+struct Winner {
+    side: Option<usize>,
+    timer: f32,
+}
+
+struct GameRng(Rng);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Action {
@@ -26,60 +64,37 @@ enum Action {
     Quit,
 }
 
-struct Pong {
-    sprites: SpriteRenderer,
-    camera: gfx::Camera,
-    actions: ActionMap<Action>,
-    rng: Rng,
+struct Controls(ActionMap<Action>);
 
-    /// Vertical position of each paddle: [left, right].
-    paddles: [f32; 2],
-    ball: Vec2,
-    velocity: Vec2,
-    scores: [u32; 2],
-    serve_timer: f32,
-    serve_direction: f32,
-
+/// Everything the render system uses, grouped in one resource.
+struct Renderers {
+    world: SpriteRenderer,
     hud: SpriteRenderer,
-    font: render::Font,
-    winner: Option<usize>,
-    message_timer: f32,
+    font: Font,
+    camera: gfx::Camera,
 }
 
-impl Pong {
-    /// Put the ball in the center and serve toward `direction` (-1 left, +1 right) after a pause.
-    fn reset_ball(&mut self, direction: f32) {
-        self.ball = Vec2::ZERO;
-        self.velocity = Vec2::ZERO;
-        self.serve_timer = SERVE_DELAY;
-        self.serve_direction = direction;
-    }
+// ---------------------------------------------------------------------------
+// Setup
+// ---------------------------------------------------------------------------
 
-    fn paddle_position(&self, side: usize) -> Vec2 {
-        let x = if side == 0 { -PADDLE_X } else { PADDLE_X };
-        Vec2::new(x, self.paddles[side])
-    }
+fn setup(world: &mut World) -> anyhow::Result<()> {
+    // Rendering
+    let font_bytes = world.resource::<Assets>().read("font.ttf")?;
+    let gpu = world.resource::<gfx::GpuContext>();
+    let sprites = SpriteRenderer::new(gpu);
+    let mut hud = SpriteRenderer::new(gpu);
+    let font = Font::new(gpu, &mut hud, &font_bytes)?;
+    world.insert_resource(Renderers {
+        world: sprites,
+        hud,
+        font,
+        camera: gfx::Camera::orthographic_2d(Vec2::ZERO, FIELD.y),
+    });
 
-    fn paddle_rect(&self, side: usize) -> Rect {
-        Rect::from_center_size(self.paddle_position(side), PADDLE_SIZE)
-    }
-
-    fn ball_rect(&self) -> Rect {
-        Rect::from_center_size(self.ball, Vec2::splat(BALL_SIZE))
-    }
-}
-
-impl Game for Pong {
-    fn config() -> runtime::Config {
-        runtime::Config {
-            title: "Pong".into(),
-            assets_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/assets").into(),
-            ..Default::default()
-        }
-    }
-
-    fn init(ctx: &mut Context) -> anyhow::Result<Self> {
-        let actions = ActionMap::new()
+    // Controls
+    world.insert_resource(Controls(
+        ActionMap::new()
             .bind_axis_1d(
                 Action::LeftPaddle,
                 Axis1DBinding::Keys {
@@ -94,120 +109,189 @@ impl Game for Pong {
                     positive: KeyCode::ArrowUp,
                 },
             )
-            .bind(Action::Quit, Binding::Key(KeyCode::Escape));
+            .bind(Action::Quit, Binding::Key(KeyCode::Escape)),
+    ));
 
-        let mut rng = Rng::from_time();
-        let first_serve = if rng.bool() { 1.0 } else { -1.0 };
+    // Game state
+    let mut rng = Rng::from_time();
+    let first_serve = if rng.bool() { 1.0 } else { -1.0 };
+    world.insert_resource(GameRng(rng));
+    world.insert_resource(Scores::default());
+    world.insert_resource(Winner::default());
+    world.insert_resource(Serve {
+        timer: SERVE_DELAY,
+        direction: first_serve,
+    });
 
-        let mut hud = SpriteRenderer::new(&ctx.gpu);
-        let font = render::Font::new(&ctx.gpu, &mut hud, &ctx.assets.read("font.ttf")?)?;
+    // Entities
+    for side in 0..2 {
+        let x = if side == 0 { -PADDLE_X } else { PADDLE_X };
+        world.spawn((
+            Paddle { side },
+            Position(Vec2::new(x, 0.0)),
+            Size(PADDLE_SIZE),
+        ));
+    }
+    world.spawn((
+        Ball,
+        Position(Vec2::ZERO),
+        Size(Vec2::splat(BALL_SIZE)),
+        Velocity(Vec2::ZERO),
+    ));
+    Ok(())
+}
 
-        let mut pong = Self {
-            sprites: SpriteRenderer::new(&ctx.gpu),
-            hud,
-            font,
-            winner: None,
-            message_timer: 0.0,
-            camera: gfx::Camera::orthographic_2d(Vec2::ZERO, FIELD.y),
-            actions,
-            rng,
-            paddles: [0.0, 0.0],
-            ball: Vec2::ZERO,
-            velocity: Vec2::ZERO,
-            scores: [0, 0],
-            serve_timer: 0.0,
-            serve_direction: 1.0,
-        };
-        pong.reset_ball(first_serve);
-        Ok(pong)
+// ---------------------------------------------------------------------------
+// Gameplay (FixedUpdate)
+// ---------------------------------------------------------------------------
+
+fn move_paddles(world: &mut World) {
+    let input = world.resource::<Input>();
+    let controls = &world.resource::<Controls>().0;
+    let directions = [
+        controls.axis_1d(input, Action::LeftPaddle),
+        controls.axis_1d(input, Action::RightPaddle),
+    ];
+    let dt = world.resource::<Time>().fixed_delta();
+    let limit = (FIELD.y - PADDLE_SIZE.y) * 0.5;
+
+    for (paddle, position) in world.query::<(&Paddle, &mut Position)>() {
+        let y = position.0.y + directions[paddle.side] * PADDLE_SPEED * dt;
+        position.0.y = y.clamp(-limit, limit);
+    }
+}
+
+fn serve(world: &mut World) {
+    let dt = world.resource::<Time>().fixed_delta();
+    let serve = world.resource_mut::<Serve>();
+    if serve.timer <= 0.0 {
+        return; // not serving
+    }
+    serve.timer -= dt;
+    if serve.timer > 0.0 {
+        return; // still waiting
     }
 
-    fn update(&mut self, ctx: &mut Context, dt: f32) {
-        if self.message_timer > 0.0 {
-            self.message_timer -= dt;
-            if self.message_timer <= 0.0 {
-                self.winner = None;
-            }
-        }
+    let direction = serve.direction;
+    let angle = world.resource_mut::<GameRng>().0.range_f32(-0.6, 0.6);
+    for velocity in world.query_filtered::<&mut Velocity, With<Ball>>() {
+        velocity.0 = Vec2::new(direction, angle).normalize() * BALL_START_SPEED;
+    }
+}
 
-        let input = &ctx.input;
-        let directions = [
-            self.actions.axis_1d(input, Action::LeftPaddle),
-            self.actions.axis_1d(input, Action::RightPaddle),
-        ];
-        let quit = self.actions.pressed(input, Action::Quit);
+fn move_ball(world: &mut World) {
+    let dt = world.resource::<Time>().fixed_delta();
+    for (position, velocity) in world.query::<(&mut Position, &Velocity)>() {
+        position.0 += velocity.0 * dt;
+    }
+}
 
-        if quit {
-            ctx.quit();
-        }
+fn collide(world: &mut World) {
+    // Collect paddle rectangles first: we can't query paddles while the ball query borrows the world.
+    let paddles: Vec<(Vec2, Rect)> = world
+        .query_filtered::<(&Position, &Size), With<Paddle>>()
+        .map(|(position, size)| (position.0, Rect::from_center_size(position.0, size.0)))
+        .collect();
+    let wall = (FIELD.y - BALL_SIZE) * 0.5;
 
-        // Paddles
-        let paddle_limit = (FIELD.y - PADDLE_SIZE.y) * 0.5;
-        for (y, direction) in self.paddles.iter_mut().zip(directions) {
-            *y = (*y + direction * PADDLE_SPEED * dt).clamp(-paddle_limit, paddle_limit);
-        }
-
-        // Waiting to serve
-        if self.serve_timer > 0.0 {
-            self.serve_timer -= dt;
-            if self.serve_timer <= 0.0 {
-                let angle = self.rng.range_f32(-0.6, 0.6);
-                self.velocity =
-                    Vec2::new(self.serve_direction, angle).normalize() * BALL_START_SPEED;
-            }
-            return;
-        }
-
-        // Ball movement
-        self.ball += self.velocity * dt;
-
+    for (position, size, velocity) in
+        world.query_filtered::<(&mut Position, &Size, &mut Velocity), With<Ball>>()
+    {
         // Top and bottom walls
-        let wall_limit = (FIELD.y - BALL_SIZE) * 0.5;
-        if self.ball.y.abs() > wall_limit {
-            self.ball.y = wall_limit.copysign(self.ball.y);
-            self.velocity.y = -self.velocity.y;
+        if position.0.y.abs() > wall {
+            position.0.y = wall.copysign(position.0.y);
+            velocity.0.y = -velocity.0.y;
         }
 
         // Paddles
-        for side in 0..2 {
-            let paddle = self.paddle_position(side);
-            let moving_toward = (paddle.x - self.ball.x).signum() == self.velocity.x.signum();
-            if moving_toward && self.ball_rect().overlaps(&self.paddle_rect(side)) {
+        let ball = Rect::from_center_size(position.0, size.0);
+        for (paddle, rect) in &paddles {
+            let moving_toward = (paddle.x - position.0.x).signum() == velocity.0.x.signum();
+            if moving_toward && ball.overlaps(rect) {
                 // -1 at the paddle's bottom edge, +1 at its top edge.
-                let offset = ((self.ball.y - paddle.y) / (PADDLE_SIZE.y * 0.5)).clamp(-1.0, 1.0);
-                let speed = self.velocity.length() * 1.05;
-                let direction = Vec2::new(-self.velocity.x.signum(), offset * 0.75);
-                self.velocity = direction.normalize() * speed;
+                let offset = ((position.0.y - paddle.y) / (PADDLE_SIZE.y * 0.5)).clamp(-1.0, 1.0);
+                let speed = velocity.0.length() * 1.05;
+                velocity.0 = Vec2::new(-velocity.0.x.signum(), offset * 0.75).normalize() * speed;
             }
         }
+    }
+}
 
-        // Scoring
-        let goal = FIELD.x * 0.5;
-        if self.ball.x < -goal {
-            self.scores[1] += 1;
-            self.reset_ball(-1.0);
-        } else if self.ball.x > goal {
-            self.scores[0] += 1;
-            self.reset_ball(1.0);
-        }
-
-        if let Some(side) = self.scores.iter().position(|&s| s >= WIN_SCORE) {
-            self.winner = Some(side);
-            self.message_timer = 2.0;
-            self.scores = [0, 0];
+fn score(world: &mut World) {
+    let goal = FIELD.x * 0.5;
+    let mut scorer = None;
+    for (position, velocity) in world.query_filtered::<(&mut Position, &mut Velocity), With<Ball>>()
+    {
+        if position.0.x.abs() > goal {
+            // Past the left edge: the right player scores, and the other way round.
+            scorer = Some(if position.0.x < 0.0 { 1 } else { 0 });
+            position.0 = Vec2::ZERO;
+            velocity.0 = Vec2::ZERO;
         }
     }
+    let Some(side) = scorer else { return };
 
-    fn render(&mut self, ctx: &mut Context, frame: &mut gfx::Frame) {
-        let gpu = &ctx.gpu;
-        let (w, h) = gpu.size();
+    let won = {
+        let scores = &mut world.resource_mut::<Scores>().0;
+        scores[side] += 1;
+        let won = scores[side] >= WIN_SCORE;
+        if won {
+            *scores = [0, 0];
+        }
+        won
+    };
+
+    // Serve toward the player who lost the point.
+    let direction = if side == 1 { -1.0 } else { 1.0 };
+    *world.resource_mut::<Serve>() = Serve {
+        timer: SERVE_DELAY,
+        direction,
+    };
+
+    if won {
+        *world.resource_mut::<Winner>() = Winner {
+            side: Some(side),
+            timer: WIN_MESSAGE_TIME,
+        };
+    }
+}
+
+fn tick_winner(world: &mut World) {
+    let dt = world.resource::<Time>().fixed_delta();
+    let winner = world.resource_mut::<Winner>();
+    if winner.timer > 0.0 {
+        winner.timer -= dt;
+        if winner.timer <= 0.0 {
+            winner.side = None;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per frame (Update)
+// ---------------------------------------------------------------------------
+
+fn quit(world: &mut World) {
+    let input = world.resource::<Input>();
+    if world.resource::<Controls>().0.pressed(input, Action::Quit) {
+        world.resource_mut::<Exit>().request();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+fn render(world: &mut World) {
+    world.resource_scope::<Renderers, _>(|world, r| {
+        let (w, h) = world.resource::<gfx::GpuContext>().size();
         let viewport = gfx::Viewport::fit(w, h, FIELD.x / FIELD.y);
         let (vw, vh) = viewport.size();
         let (vwf, vhf) = (vw as f32, vh as f32);
-        let white = self.sprites.white();
+        let white = r.world.white();
 
-        // Field background
-        self.sprites.draw(
+        // Field and dashed center line
+        r.world.draw(
             white,
             &Sprite {
                 size: FIELD,
@@ -216,10 +300,8 @@ impl Game for Pong {
                 ..Default::default()
             },
         );
-
-        // Dashed center line
         for i in 0..9 {
-            self.sprites.draw(
+            r.world.draw(
                 white,
                 &Sprite {
                     position: Vec2::new(0.0, -4.0 + i as f32),
@@ -230,72 +312,93 @@ impl Game for Pong {
             );
         }
 
-        // Paddles and ball
-        for side in 0..2 {
-            self.sprites.draw(
+        // Every entity with a position and a size: paddles and ball.
+        for (position, size) in world.query::<(&Position, &Size)>() {
+            r.world.draw(
                 white,
                 &Sprite {
-                    position: self.paddle_position(side),
-                    size: PADDLE_SIZE,
+                    position: position.0,
+                    size: size.0,
                     color: FOREGROUND,
                     layer: 1,
                     ..Default::default()
                 },
             );
         }
-        self.sprites.draw(
-            white,
-            &Sprite {
-                position: self.ball,
-                size: Vec2::splat(BALL_SIZE),
-                color: FOREGROUND,
-                layer: 1,
-                ..Default::default()
-            },
-        );
 
-        // HUD: sizes scale with the viewport, quantized so the glyph cache stays small.
+        // HUD
+        let scores = world.resource::<Scores>().0;
+        let winner = world.resource::<Winner>().side;
+        let gpu = world.resource::<gfx::GpuContext>();
         let quantize = |size: f32| ((size / 4.0).round() * 4.0).max(8.0);
-        let score_style = render::TextStyle {
+
+        let score_style = TextStyle {
             size: quantize(vhf * 0.1),
             color: FOREGROUND,
             ..Default::default()
         };
         for side in 0..2 {
-            let text = self.scores[side].to_string();
-            let size = self.font.measure(&text, score_style.size);
+            let text = scores[side].to_string();
+            let size = r.font.measure(&text, score_style.size);
             let sign = if side == 0 { -1.0 } else { 1.0 };
             let top_left = Vec2::new(
                 vwf * 0.5 + sign * vwf * 0.08 - size.x * 0.5,
                 vhf - vhf * 0.04,
             );
-            self.font
-                .draw(gpu, &mut self.hud, &text, top_left, &score_style);
+            r.font.draw(gpu, &mut r.hud, &text, top_left, &score_style);
         }
-
-        if let Some(side) = self.winner {
+        if let Some(side) = winner {
             let text = format!("Player {} wins!", side + 1);
-            let style = render::TextStyle {
+            let style = TextStyle {
                 size: quantize(vhf * 0.07),
                 color: FOREGROUND,
                 ..Default::default()
             };
-            let size = self.font.measure(&text, style.size);
+            let size = r.font.measure(&text, style.size);
             let top_left = Vec2::new((vwf - size.x) * 0.5, (vhf + size.y) * 0.5);
-            self.font.draw(gpu, &mut self.hud, &text, top_left, &style);
+            r.font.draw(gpu, &mut r.hud, &text, top_left, &style);
         }
 
-        self.sprites
-            .prepare(gpu, &gfx::View::new(&self.camera, vw, vh));
-        self.hud.prepare(gpu, &gfx::View::pixels(vw, vh));
+        // Prepare and draw.
+        r.world.prepare(gpu, &gfx::View::new(&r.camera, vw, vh));
+        r.hud.prepare(gpu, &gfx::View::pixels(vw, vh));
 
-        let mut pass = frame.clear_pass(Color::BLACK);
+        let frame = world.resource_mut::<gfx::Frame>();
+        let mut pass = frame.clear_pass(gfx::Color::BLACK);
         viewport.apply(&mut pass);
-        self.sprites.render(&mut pass);
-        self.hud.render(&mut pass);
-    }
+        r.world.render(&mut pass);
+        r.hud.render(&mut pass);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Plugins and main
+// ---------------------------------------------------------------------------
+
+fn gameplay(app: &mut App) {
+    app.add_system(Stage::Startup, setup)
+        .add_system(Stage::FixedUpdate, move_paddles)
+        .add_system(Stage::FixedUpdate, serve)
+        .add_system(Stage::FixedUpdate, move_ball)
+        .add_system(Stage::FixedUpdate, collide)
+        .add_system(Stage::FixedUpdate, score)
+        .add_system(Stage::FixedUpdate, tick_winner)
+        .add_system(Stage::Update, quit);
+}
+
+fn presentation(app: &mut App) {
+    app.add_system(Stage::Render, render);
 }
 
 fn main() -> anyhow::Result<()> {
-    runtime::run::<Pong>()
+    let mut app = App::new();
+    app.insert_resource(Config {
+        title: "Pong".into(),
+        assets_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/assets").into(),
+        ..Default::default()
+    })
+    .add_plugin(gameplay)
+    .add_plugin(presentation);
+
+    runtime::run_app(app)
 }
