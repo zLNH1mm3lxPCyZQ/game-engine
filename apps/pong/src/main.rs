@@ -1,4 +1,7 @@
-use gfx::{Color, glam::{Vec2, Vec4}};
+use gfx::{
+    Color,
+    glam::{Vec2, Vec4},
+};
 use math::{Rect, Rng};
 use render::{Sprite, SpriteRenderer};
 use runtime::{ActionMap, Axis1DBinding, Binding, Context, Game, KeyCode};
@@ -70,7 +73,7 @@ impl Game for Pong {
     fn config() -> runtime::Config {
         runtime::Config {
             title: "Pong".into(),
-        assets_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/assets").into(),
+            assets_dir: concat!(env!("CARGO_MANIFEST_DIR"), "/assets").into(),
             ..Default::default()
         }
     }

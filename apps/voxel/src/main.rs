@@ -1,5 +1,5 @@
-use gfx::{Color, Vertex};
 use gfx::glam::{IVec3, Vec2, Vec3, Vec4};
+use gfx::{Color, Vertex};
 use render::{Material, MaterialId, MeshId, MeshRenderer, Sprite, SpriteRenderer};
 use runtime::{
     ActionMap, Axis1DBinding, AxisBinding, Binding, Context, Game, KeyCode, MouseButton,
